@@ -114,4 +114,11 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    'default_admin' => [
+        'name' => env('DEFAULT_ADMIN_NAME', 'Super Administrateur'),
+        'email' => env('DEFAULT_ADMIN_EMAIL', 'admin@njglobaltrade.local'),
+        'password' => env('DEFAULT_ADMIN_PASSWORD', 'ChangeMe!12345'),
+        'role' => env('DEFAULT_ADMIN_ROLE', 'SUPER_ADMIN'),
+    ],
+
 ];
