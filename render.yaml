@@ -1,0 +1,121 @@
+services:
+  - type: web
+    name: njglobaltrade-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Le preDeployCommand est utilisé pour appliquer les migrations avant le démarrage.
+    # Render le réserve aux services web payants.
+    plan: 0.5c-512mb
+    region: frankfurt
+    healthCheckPath: /up
+    preDeployCommand: php artisan migrate --force && php artisan db:seed --force
+    envVars:
+      - key: APP_NAME
+        value: NJ Global Trade
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        generateValue: true
+      - key: APP_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        sync: false
+      - key: DB_SSLMODE
+        value: require
+      - key: SESSION_DRIVER
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: FILESYSTEM_DISK
+        value: local
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: warning
+      - key: DEFAULT_ADMIN_NAME
+        value: Super Administrateur
+      - key: DEFAULT_ADMIN_EMAIL
+        sync: false
+      - key: DEFAULT_ADMIN_PASSWORD
+        sync: false
+      - key: DEFAULT_ADMIN_ROLE
+        value: SUPER_ADMIN
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: NJ Global Trade
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ALLOWED_DOMAIN
+        sync: false
+
+  - type: worker
+    name: njglobaltrade-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: php artisan queue:work database --sleep=3 --tries=3 --timeout=90
+    plan: 0.5c-512mb
+    region: frankfurt
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_KEY
+        fromService:
+          type: web
+          name: njglobaltrade-api
+          envVarKey: APP_KEY
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        fromService:
+          type: web
+          name: njglobaltrade-api
+          envVarKey: DB_URL
+      - key: DB_SSLMODE
+        value: require
+      - key: QUEUE_CONNECTION
+        value: database
+
+  - type: cron
+    name: njglobaltrade-scheduler
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: php artisan schedule:run
+    schedule: "* * * * *"
+    plan: 0.5c-512mb
+    region: frankfurt
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_KEY
+        fromService:
+          type: web
+          name: njglobaltrade-api
+          envVarKey: APP_KEY
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        fromService:
+          type: web
+          name: njglobaltrade-api
+          envVarKey: DB_URL
+      - key: DB_SSLMODE
+        value: require
+
