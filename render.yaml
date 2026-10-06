@@ -40,6 +40,10 @@ services:
         value: stderr
       - key: LOG_LEVEL
         value: warning
+      - key: MAIL_FROM_ADDRESS
+        value: njapp202@gmail.com
+      - key: MAIL_FROM_NAME
+        value: NJ Global Trade Co.Ltd
       - key: DEFAULT_ADMIN_NAME
         value: Super Administrateur
       - key: DEFAULT_ADMIN_EMAIL
@@ -51,9 +55,9 @@ services:
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_SENDER_EMAIL
-        sync: false
+        value: njapp202@gmail.com
       - key: BREVO_SENDER_NAME
-        value: NJ Global Trade
+        value: NJ Global Trade Co.Ltd
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
