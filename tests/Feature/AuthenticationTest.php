@@ -6,7 +6,7 @@ use App\Enums\UserRole;
 use App\Models\Permission;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
-use App\Notifications\NewUserCredentialsNotification;
+use App\Notifications\UserInvitationNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -72,6 +72,100 @@ class AuthenticationTest extends TestCase
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
+    public function test_access_token_is_created_with_a_thirty_day_sliding_expiration(): void
+    {
+        $user = User::factory()->create();
+        $user->createAccessToken();
+
+        $token = PersonalAccessToken::query()->sole();
+
+        $this->assertNotNull($token->expires_at);
+        $this->assertTrue($token->expires_at->greaterThanOrEqualTo(now()->addDays(29)));
+        $this->assertTrue($token->expires_at->lessThanOrEqualTo(now()->addDays(31)));
+    }
+
+    public function test_expired_token_cannot_authenticate(): void
+    {
+        $user = User::factory()->create();
+        $plainTextToken = $user->createAccessToken()['access_token'];
+
+        PersonalAccessToken::query()->sole()->forceFill(['expires_at' => now()->subMinute()])->save();
+
+        $this->getJson('/api/auth/me', [
+            'Authorization' => 'Bearer '.$plainTextToken,
+        ])->assertUnauthorized();
+    }
+
+    public function test_active_use_slides_the_token_expiration_forward(): void
+    {
+        $user = User::factory()->create();
+        $plainTextToken = $user->createAccessToken()['access_token'];
+
+        PersonalAccessToken::query()->sole()->forceFill(['expires_at' => now()->addDay()])->save();
+
+        $this->getJson('/api/auth/me', [
+            'Authorization' => 'Bearer '.$plainTextToken,
+        ])->assertOk();
+
+        $refreshed = PersonalAccessToken::query()->sole();
+
+        $this->assertTrue($refreshed->expires_at->greaterThanOrEqualTo(now()->addDays(29)));
+        $this->assertTrue($refreshed->expires_at->lessThanOrEqualTo(now()->addDays(31)));
+    }
+
+    public function test_login_endpoint_is_rate_limited(): void
+    {
+        User::factory()->create([
+            'email' => 'throttle@njglobaltrade.test',
+            'password' => 'Password!123',
+        ]);
+
+        for ($i = 0; $i < 6; $i++) {
+            $this->postJson('/api/auth/login', [
+                'email' => 'throttle@njglobaltrade.test',
+                'password' => 'WrongPassword!123',
+            ])->assertUnauthorized();
+        }
+
+        $this->postJson('/api/auth/login', [
+            'email' => 'throttle@njglobaltrade.test',
+            'password' => 'WrongPassword!123',
+        ])->assertStatus(429);
+    }
+
+    public function test_user_with_pending_password_change_cannot_access_protected_business_routes(): void
+    {
+        $admin = User::factory()->create([
+            'role' => UserRole::ADMIN->value,
+            'must_change_password' => true,
+        ]);
+        $plainTextToken = $admin->createAccessToken()['access_token'];
+
+        $this->postJson('/api/users', [
+            'full_name' => 'Bloque Avant Changement',
+            'email' => 'blocked@njglobaltrade.test',
+            'role' => UserRole::ADMIN->value,
+        ], [
+            'Authorization' => 'Bearer '.$plainTextToken,
+        ])->assertForbidden();
+
+        $this->assertDatabaseMissing('users', ['email' => 'blocked@njglobaltrade.test']);
+    }
+
+    public function test_user_with_pending_password_change_can_still_reach_auth_routes(): void
+    {
+        $user = User::factory()->create(['must_change_password' => true]);
+        $plainTextToken = $user->createAccessToken()['access_token'];
+
+        $this->getJson('/api/auth/me', [
+            'Authorization' => 'Bearer '.$plainTextToken,
+        ])->assertOk();
+
+        $this->postJson('/api/auth/logout', [], [
+            'Authorization' => 'Bearer '.$plainTextToken,
+        ])->assertOk();
+    }
+
     public function test_user_can_change_password(): void
     {
         $user = User::factory()->create([
@@ -112,7 +206,7 @@ class AuthenticationTest extends TestCase
         $this->assertSame(0, PersonalAccessToken::query()->count());
     }
 
-    public function test_admin_can_create_user_and_send_credentials_notification(): void
+    public function test_admin_can_create_user_and_send_invitation_notification(): void
     {
         Notification::fake();
 
@@ -123,8 +217,6 @@ class AuthenticationTest extends TestCase
             'full_name' => 'Nouveau Collaborateur',
             'email' => 'new.user@njglobaltrade.test',
             'role' => UserRole::ADMIN->value,
-            'password' => 'Temporary!123',
-            'password_confirmation' => 'Temporary!123',
         ], [
             'Authorization' => 'Bearer '.$plainTextToken,
         ])->assertCreated()
@@ -134,8 +226,48 @@ class AuthenticationTest extends TestCase
         $createdUser = User::query()->where('email', 'new.user@njglobaltrade.test')->firstOrFail();
 
         $this->assertSame($admin->id, $createdUser->created_by_user_id);
-        $this->assertTrue(Hash::check('Temporary!123', $createdUser->password));
-        Notification::assertSentTo($createdUser, NewUserCredentialsNotification::class);
+        $this->assertFalse(Hash::check('Temporary!123', $createdUser->password));
+        Notification::assertSentTo($createdUser, UserInvitationNotification::class);
+        $this->assertDatabaseHas('password_reset_tokens', ['email' => 'new.user@njglobaltrade.test']);
+    }
+
+    public function test_invited_user_can_define_password_with_invitation_token(): void
+    {
+        Notification::fake();
+
+        $admin = User::factory()->create(['role' => UserRole::ADMIN->value]);
+        $plainTextToken = $admin->createAccessToken()['access_token'];
+
+        $this->postJson('/api/users', [
+            'full_name' => 'Invite Secure',
+            'email' => 'invite.secure@njglobaltrade.test',
+            'role' => UserRole::ADMIN->value,
+        ], [
+            'Authorization' => 'Bearer '.$plainTextToken,
+        ])->assertCreated();
+
+        $createdUser = User::query()->where('email', 'invite.secure@njglobaltrade.test')->firstOrFail();
+        $invitation = null;
+
+        Notification::assertSentTo(
+            $createdUser,
+            UserInvitationNotification::class,
+            function (UserInvitationNotification $notification) use (&$invitation): bool {
+                $invitation = $notification;
+
+                return true;
+            },
+        );
+
+        $this->postJson('/api/auth/reset-password', [
+            'email' => 'invite.secure@njglobaltrade.test',
+            'token' => $invitation->token,
+            'password' => 'SecurePassword!123',
+            'password_confirmation' => 'SecurePassword!123',
+        ])->assertOk();
+
+        $this->assertTrue(Hash::check('SecurePassword!123', $createdUser->fresh()->password));
+        $this->assertFalse($createdUser->fresh()->must_change_password);
     }
 
     public function test_admin_cannot_create_super_admin(): void
@@ -149,8 +281,6 @@ class AuthenticationTest extends TestCase
             'full_name' => 'Futur Super Admin',
             'email' => 'super.admin@njglobaltrade.test',
             'role' => UserRole::SUPER_ADMIN->value,
-            'password' => 'Temporary!123',
-            'password_confirmation' => 'Temporary!123',
         ], [
             'Authorization' => 'Bearer '.$plainTextToken,
         ])->assertForbidden();

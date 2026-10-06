@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\SystemTrace;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,6 +17,8 @@ class EnsureUserHasPermission
         $user = $request->user();
 
         if (! $user || ! collect($permissions)->every(fn (string $permission) => $user->hasPermission($permission))) {
+            SystemTrace::record('auth.permission_denied', user: $user, context: ['required_permissions' => $permissions]);
+
             return response()->json(['message' => 'Permission insuffisante.'], Response::HTTP_FORBIDDEN);
         }
 

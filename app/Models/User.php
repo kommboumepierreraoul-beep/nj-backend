@@ -16,7 +16,15 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'full_name', 'email', 'password', 'role', 'is_active', 'last_login_at', 'must_change_password', 'created_by_user_id'])]
+// Remarque volontaire : "role", "is_active", "failed_login_attempts" et "locked_until"
+// sont exclus de cette liste malgre leur presence en base. Ce sont des champs
+// sensibles (privilege/acces/verrouillage) qui ne doivent jamais pouvoir etre
+// modifies par affectation de masse depuis une entree utilisateur ; ils sont
+// toujours ecrits explicitement via forceFill() dans les controleurs (voir
+// UserManagementController::store()/update()/updateStatus() et
+// AuthController::login()). Verifie (grep) : aucun controleur n'appelle
+// User::create()/update()/fill() avec $request->all() ou equivalent non filtre.
+#[Fillable(['name', 'full_name', 'email', 'google_id', 'avatar_url', 'password', 'last_login_at', 'must_change_password', 'created_by_user_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -37,7 +45,14 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'last_login_at' => 'datetime',
             'must_change_password' => 'boolean',
+            'failed_login_attempts' => 'integer',
+            'locked_until' => 'datetime',
         ];
+    }
+
+    public function isLockedOut(): bool
+    {
+        return $this->locked_until !== null && $this->locked_until->isFuture();
     }
 
     public function permissions(): BelongsToMany
@@ -58,6 +73,7 @@ class User extends Authenticatable
             'name' => $name,
             'token' => hash('sha256', $plainTextToken),
             'abilities' => $abilities,
+            'expires_at' => now()->addDays((int) config('auth.access_token_lifetime_days', 30)),
         ]);
 
         return [

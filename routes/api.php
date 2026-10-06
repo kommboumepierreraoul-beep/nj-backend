@@ -1,23 +1,18 @@
 <?php
 
-use App\Http\Controllers\Auth\AuthController;
-use App\Http\Controllers\Auth\PasswordResetController;
-use App\Http\Controllers\UserManagementController;
-use Illuminate\Support\Facades\Route;
-
-Route::prefix('auth')->group(function (): void {
-    Route::post('login', [AuthController::class, 'login']);
-    Route::post('forgot-password', [PasswordResetController::class, 'sendResetLink']);
-    Route::post('reset-password', [PasswordResetController::class, 'reset']);
-
-    Route::middleware('auth.api')->group(function (): void {
-        Route::get('me', [AuthController::class, 'me']);
-        Route::post('logout', [AuthController::class, 'logout']);
-        Route::post('logout-all', [AuthController::class, 'logoutAll']);
-        Route::post('change-password', [AuthController::class, 'changePassword']);
-    });
-});
-
-Route::middleware(['auth.api', 'role:SUPER_ADMIN,ADMIN'])->group(function (): void {
-    Route::post('users', [UserManagementController::class, 'store']);
-});
+// Ce fichier reste volontairement minimal : chaque module metier definit ses
+// propres routes (et ses propres groupes de middleware/permissions) dans son
+// sous-repertoire.
+require __DIR__.'/auth/auth.php';
+require __DIR__.'/reference_data/reference_data.php';
+require __DIR__.'/product/product.php';
+require __DIR__.'/supplier/supplier.php';
+require __DIR__.'/client/client.php';
+require __DIR__.'/users/users.php';
+require __DIR__.'/audit/audit.php';
+require __DIR__.'/sales_order/sales_order.php';
+require __DIR__.'/invoice/invoice.php';
+require __DIR__.'/company/company.php';
+require __DIR__.'/dashboard/dashboard.php';
+require __DIR__.'/flow_analytics/flow_analytics.php';
+require __DIR__.'/notifications/notifications.php';

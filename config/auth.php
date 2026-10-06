@@ -114,6 +114,39 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Access Token Lifetime
+    |--------------------------------------------------------------------------
+    |
+    | Duree de vie (en jours) des jetons d'acces API personnels. Elle est
+    | glissante : chaque requete authentifiee reussie repousse l'expiration
+    | de ce nombre de jours (voir AuthenticateApiToken), afin qu'un
+    | utilisateur actif ne soit jamais deconnecte de force, tandis qu'un
+    | jeton compromis mais inutilise finit par expirer automatiquement.
+    |
+    */
+
+    'access_token_lifetime_days' => (int) env('AUTH_ACCESS_TOKEN_LIFETIME_DAYS', 30),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Verrouillage de compte apres echecs de connexion repetes
+    |--------------------------------------------------------------------------
+    |
+    | Complementaire au rate limiting par IP deja en place sur POST /auth/login
+    | (throttle:6,1 dans routes/auth/auth.php) : ce verrouillage est attache au
+    | COMPTE (pas a l'IP), donc il protege meme si l'attaquant change d'adresse
+    | IP entre les tentatives. Au bout de "max_attempts" mots de passe errones
+    | consecutifs, le compte est verrouille pendant "duration_minutes" et le
+    | compteur est remis a zero. Une connexion reussie remet aussi le compteur
+    | a zero. Voir AuthController::login().
+    |
+    */
+
+    'login_lockout_max_attempts' => (int) env('AUTH_LOGIN_LOCKOUT_MAX_ATTEMPTS', 6),
+    'login_lockout_duration_minutes' => (int) env('AUTH_LOGIN_LOCKOUT_DURATION_MINUTES', 15),
+
     'default_admin' => [
         'name' => env('DEFAULT_ADMIN_NAME', 'Super Administrateur'),
         'email' => env('DEFAULT_ADMIN_EMAIL', 'admin@njglobaltrade.local'),
