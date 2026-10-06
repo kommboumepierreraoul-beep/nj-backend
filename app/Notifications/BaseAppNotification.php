@@ -106,7 +106,11 @@ abstract class BaseAppNotification extends Notification
     {
         return [
             'subject' => $this->title($notifiable),
-            'html' => '<p>'.e($this->body($notifiable)).'</p>',
+            'html' => view('emails.notification', [
+                'user' => $notifiable,
+                'title' => $this->title($notifiable),
+                'body' => $this->body($notifiable),
+            ])->render(),
             'text' => $this->body($notifiable),
         ];
     }
