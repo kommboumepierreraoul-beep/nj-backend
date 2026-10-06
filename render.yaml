@@ -4,12 +4,9 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    # Le preDeployCommand est utilisé pour appliquer les migrations avant le démarrage.
-    # Render le réserve aux services web payants.
-    plan: 0.5c-512mb
+    plan: free
     region: frankfurt
     healthCheckPath: /up
-    preDeployCommand: php artisan migrate --force && php artisan db:seed --force
     envVars:
       - key: APP_NAME
         value: NJ Global Trade
